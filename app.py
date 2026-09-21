@@ -34,6 +34,54 @@ def extract_text_from_pdf(pdf_file):
             text += extracted + "\n"
     return text
 
+# ---------------------------------------------------------
+# Model calling helper: tries a preferred model first, then
+# automatically falls back through a list of alternatives if
+# Google retires/renames a model (as happened with 1.5-flash
+# and 2.5-flash). This avoids hardcoding a single model name
+# that can 404 without warning.
+# ---------------------------------------------------------
+CANDIDATE_MODELS = [
+    "gemini-3.6-flash",
+    "gemini-3.5-flash",
+    "gemini-2.5-flash",
+    "gemini-2.0-flash",
+]
+
+def call_gemini_auto(client, contents):
+    discovered_models = []
+    try:
+        for m in client.models.list():
+            name = getattr(m, "name", "") or ""
+            # Model names from the API may be prefixed like "models/gemini-3.6-flash"
+            short_name = name.split("/")[-1] if name else ""
+            if short_name:
+                discovered_models.append(short_name)
+    except Exception:
+        pass
+
+    # Try our known-good candidates first (in order of preference),
+    # keeping only ones the API actually reports as available if we
+    # managed to discover any; otherwise just try them all directly.
+    if discovered_models:
+        ordered_models = [m for m in CANDIDATE_MODELS if m in discovered_models]
+        ordered_models += [m for m in discovered_models if m not in ordered_models]
+    else:
+        ordered_models = CANDIDATE_MODELS
+
+    last_err = None
+    for model_name in ordered_models:
+        try:
+            return client.models.generate_content(
+                model=model_name,
+                contents=contents
+            )
+        except Exception as e:
+            last_err = e
+            continue
+
+    raise last_err if last_err else RuntimeError("No Gemini model available.")
+
 # Search Mode
 search_mode = st.radio(
     "Seleccione el método de búsqueda:",
@@ -43,6 +91,7 @@ search_mode = st.radio(
 cv_text = ""
 image_bytes = None
 sector_input = ""
+uploaded_file = None
 
 if "1. Analizar CV" in search_mode:
     uploaded_file = st.file_uploader("Suba su CV (PDF, PNG, JPG)", type=["pdf", "png", "jpg", "jpeg"])
@@ -89,11 +138,7 @@ if st.button("Buscar Empresas Compatibles ✨"):
             if image_bytes:
                 contents.append(types.Part.from_bytes(data=image_bytes, mime_type=uploaded_file.type))
 
-            # Fixed Model Name for google-genai SDK
-            response = client.models.generate_content(
-                model="gemini-2.5-flash",
-                contents=contents
-            )
+            response = call_gemini_auto(client, contents)
 
             st.success("¡Búsqueda completada exitosamente!")
             st.markdown(response.text)
