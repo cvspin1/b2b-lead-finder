@@ -8,20 +8,20 @@ import io
 
 # Page Config
 st.set_page_config(
-    page_title="B2B Spain Job & Lead Finder ES",
+    page_title="B2B Spain Job & Lead Finder",
     page_icon="💼",
     layout="wide"
 )
 
-st.title("B2B Spain Job & Lead Finder ES")
-st.caption("Buscador de empresas en España con ofertas activas y contactos de selección/RRHH")
+st.title("B2B Spain Job & Lead Finder")
+st.caption("Find companies in Spain with active hiring needs and HR/recruiting contacts")
 
 # Initialize Gemini Client using Streamlit Secrets
 try:
     api_key = st.secrets["GEMINI_API_KEY"]
     client = genai.Client(api_key=api_key)
 except Exception as e:
-    st.error("Error al cargar la clave API. Asegúrese de configurar GEMINI_API_KEY en Streamlit Secrets.")
+    st.error("Error loading the API key. Make sure GEMINI_API_KEY is set in Streamlit Secrets.")
     st.stop()
 
 # Helper function to extract text from PDF
@@ -84,8 +84,8 @@ def call_gemini_auto(client, contents):
 
 # Search Mode
 search_mode = st.radio(
-    "Seleccione el método de búsqueda:",
-    ["1. Analizar CV (PDF / Imagen)", "2. Por Sector / Domaine"]
+    "Select your search method:",
+    ["1. Analyze CV (PDF / Image)", "2. By Sector / Domain"]
 )
 
 cv_text = ""
@@ -93,44 +93,53 @@ image_bytes = None
 sector_input = ""
 uploaded_file = None
 
-if "1. Analizar CV" in search_mode:
-    uploaded_file = st.file_uploader("Suba su CV (PDF, PNG, JPG)", type=["pdf", "png", "jpg", "jpeg"])
+if "1. Analyze CV" in search_mode:
+    uploaded_file = st.file_uploader("Upload your CV (PDF, PNG, JPG)", type=["pdf", "png", "jpg", "jpeg"])
     if uploaded_file:
         if uploaded_file.type == "application/pdf":
             cv_text = extract_text_from_pdf(uploaded_file)
         else:
             image_bytes = uploaded_file.read()
 else:
-    sector_input = st.text_input("Ingrese el Sector o Dominio profesional (ej. Marketing Digital, Hostelería, Software)")
+    sector_input = st.text_input("Enter the professional Sector or Domain (e.g. Digital Marketing, Hospitality, Software)")
 
-city_input = st.text_input("Ciudad / Provincia en España (Opcional)", placeholder="ej. Madrid, Barcelona, Valencia")
-num_companies = st.slider("Número de empresas", min_value=5, max_value=25, value=10)
+city_input = st.text_input("City / Province in Spain (Optional)", placeholder="e.g. Madrid, Barcelona, Valencia")
 
-if st.button("Buscar Empresas Compatibles ✨"):
-    if "1. Analizar CV" in search_mode and not uploaded_file:
-        st.warning("Por favor, suba un archivo de CV para continuar.")
+# Raised ceiling so the bot can return as many contacts as possible in one pass.
+num_companies = st.slider("Number of companies", min_value=5, max_value=100, value=30)
+
+if st.button("Search Matching Companies ✨"):
+    if "1. Analyze CV" in search_mode and not uploaded_file:
+        st.warning("Please upload a CV file to continue.")
         st.stop()
-    elif "2. Por Sector" in search_mode and not sector_input:
-        st.warning("Por favor, ingrese un sector o dominio profesional.")
+    elif "2. By Sector" in search_mode and not sector_input:
+        st.warning("Please enter a professional sector or domain.")
         st.stop()
 
-    with st.spinner("Buscando empresas y generando información de contacto..."):
+    with st.spinner("Searching for companies and generating contact information..."):
         prompt = f"""
-        Actúa como un experto en B2B Lead Generation y Reclutamiento en España.
-        Genera una lista exacta de {num_companies} empresas reales ubicadas o activas en España {f'en la zona de {city_input}' if city_input else ''} que tengan necesidades activas de contratación o encajen perfectamente con el perfil provisto.
+        Act as an expert in B2B Lead Generation and Recruitment in Spain.
 
-        Perfil / Requisitos:
+        Generate as many real, distinct companies as possible — up to a maximum of
+        {num_companies} — that are located or active in Spain {f'in the {city_input} area' if city_input else ''}
+        and that have active hiring needs or are a strong match for the profile provided below.
+        Prioritize genuine, well-known or verifiable companies over generic filler entries.
+        Do not repeat the same company twice, and do not stop early if you can find more
+        qualifying companies — aim to reach the requested count.
+
+        Profile / Requirements:
         {cv_text if cv_text else sector_input}
 
-        Para cada empresa devuelve estrictamente los siguientes campos estructurados:
-        1. Nombre de la empresa
-        2. Sector / Industria
-        3. Ciudad / Ubicación en España
-        4. Razón del encaje (Por qué necesitan este perfil)
-        5. Email de contacto / Selección / RRHH (o formato estándar estimado ej. rrhh@empresa.es)
-        6. Teléfono o enlace de ofertas de empleo
+        For each company, return strictly the following structured fields:
+        1. Company name
+        2. Sector / Industry
+        3. City / Location in Spain
+        4. Why it's a good fit (why they would need this profile)
+        5. Contact email for Recruiting / HR (or a standard estimated format, e.g. hr@company.es)
+        6. Phone number or link to job openings
 
-        Formatea la respuesta en una tabla Markdown clara y estructurada.
+        Write the entire response in English.
+        Format the response as a clear, well-structured Markdown table.
         """
 
         try:
@@ -140,8 +149,14 @@ if st.button("Buscar Empresas Compatibles ✨"):
 
             response = call_gemini_auto(client, contents)
 
-            st.success("¡Búsqueda completada exitosamente!")
+            st.success("Search completed successfully!")
             st.markdown(response.text)
+
+            # Click-to-copy: st.code() renders a built-in copy icon in the
+            # top-right corner, so the raw results can be copied in one click.
+            st.markdown("---")
+            with st.expander("📋 Copy results"):
+                st.code(response.text, language=None)
 
         except Exception as e:
             st.error(f"Error: {str(e)}")
