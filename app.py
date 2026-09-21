@@ -1,10 +1,12 @@
 import streamlit as st
+import streamlit.components.v1 as components
 import pandas as pd
 from google import genai
 from google.genai import types
 import pypdf
 from PIL import Image
 import io
+import json
 
 # Page Config
 st.set_page_config(
@@ -33,6 +35,61 @@ def extract_text_from_pdf(pdf_file):
         if extracted:
             text += extracted + "\n"
     return text
+
+# ---------------------------------------------------------
+# Parses a Markdown table (the format we ask Gemini to return)
+# into a pandas DataFrame, so it can be shown as a real table,
+# downloaded as CSV, or copied as tab-separated values that
+# paste cleanly into Excel / Google Sheets.
+# ---------------------------------------------------------
+def parse_markdown_table(md_text):
+    lines = [l for l in md_text.split("\n") if l.strip().startswith("|")]
+    if len(lines) < 2:
+        return None
+
+    def split_row(line):
+        return [c.strip() for c in line.strip().strip("|").split("|")]
+
+    header = split_row(lines[0])
+    rows = []
+    for line in lines[1:]:
+        cells = split_row(line)
+        # Skip the "|---|---|---|" separator row
+        if all(set(c) <= set("-: ") for c in cells):
+            continue
+        if len(cells) == len(header):
+            rows.append(cells)
+
+    if not rows:
+        return None
+    return pd.DataFrame(rows, columns=header)
+
+# ---------------------------------------------------------
+# Renders a one-click "Copy table" button using a small HTML/JS
+# component. Copies tab-separated values so pasting into Excel
+# or Google Sheets lands each field in its own column.
+# ---------------------------------------------------------
+def render_copy_table_button(df, key):
+    tsv_text = df.to_csv(sep="\t", index=False)
+    button_id = f"copyBtn_{key}"
+    html_code = f"""
+    <script>
+    function copyTable_{key}() {{
+        const text = {json.dumps(tsv_text)};
+        navigator.clipboard.writeText(text).then(function() {{
+            var btn = document.getElementById('{button_id}');
+            btn.innerText = '✅ Copied!';
+            setTimeout(function() {{ btn.innerText = '📋 Copy table'; }}, 2000);
+        }});
+    }}
+    </script>
+    <button id="{button_id}" onclick="copyTable_{key}()"
+        style="padding:8px 16px;background-color:#FF4B4B;color:white;
+        border:none;border-radius:6px;cursor:pointer;font-size:14px;">
+        📋 Copy table
+    </button>
+    """
+    components.html(html_code, height=50)
 
 # ---------------------------------------------------------
 # Model calling helper: tries a preferred model first, then
@@ -159,11 +216,27 @@ if st.button("Search Matching Companies ✨"):
             st.success("Search completed successfully!")
             st.markdown(response.text)
 
-            # Click-to-copy: st.code() renders a built-in copy icon in the
-            # top-right corner, so the raw results can be copied in one click.
+            # Click-to-copy: parse the Markdown table Gemini returned into a
+            # real table, then offer a one-click "Copy table" button (copies
+            # tab-separated values so it pastes cleanly into Excel/Sheets)
+            # plus a CSV download as a backup option.
+            df = parse_markdown_table(response.text)
             st.markdown("---")
-            with st.expander("📋 Copy results"):
-                st.code(response.text, language=None)
+            if df is not None:
+                col1, col2 = st.columns([1, 1])
+                with col1:
+                    render_copy_table_button(df, key="leads")
+                with col2:
+                    st.download_button(
+                        "⬇️ Download as CSV",
+                        data=df.to_csv(index=False).encode("utf-8"),
+                        file_name="spain_leads.csv",
+                        mime="text/csv"
+                    )
+            else:
+                # Fallback if the response wasn't a clean Markdown table
+                with st.expander("📋 Copy raw results"):
+                    st.code(response.text, language=None)
 
         except Exception as e:
             st.error(f"Error: {str(e)}")
