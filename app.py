@@ -105,8 +105,15 @@ else:
 
 city_input = st.text_input("City / Province in Spain (Optional)", placeholder="e.g. Madrid, Barcelona, Valencia")
 
-# Raised ceiling so the bot can return as many contacts as possible in one pass.
-num_companies = st.slider("Number of companies", min_value=5, max_value=100, value=30)
+# No fixed ceiling: you choose how many. Very high numbers may get cut short
+# by the model's own output-length limit rather than this app's code.
+num_companies = st.number_input(
+    "Number of companies",
+    min_value=5,
+    value=30,
+    step=5,
+    help="Enter any number. Extremely high values may be truncated by the model's response length limit."
+)
 
 if st.button("Search Matching Companies ✨"):
     if "1. Analyze CV" in search_mode and not uploaded_file:
