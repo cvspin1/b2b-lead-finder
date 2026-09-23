@@ -179,9 +179,11 @@ with col_num:
     )
 with col_max:
     st.markdown("<div style='height: 28px;'></div>", unsafe_allow_html=True)
-    if st.button("MAX"):
+
+    def _set_max_companies():
         st.session_state.num_companies_input = MAX_COMPANIES
-        st.rerun()
+
+    st.button("MAX", on_click=_set_max_companies)
 
 if st.button("Search Matching Companies ✨"):
     if "1. Analyze CV" in search_mode and not uploaded_file:
