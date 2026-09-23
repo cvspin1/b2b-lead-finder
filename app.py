@@ -17,7 +17,7 @@ st.set_page_config(
 )
 
 st.title("B2B Spain Job & Lead Finder")
-st.caption("Find companies in Spain with active hiring needs, HR/recruiting contacts, and ready-to-send outreach messages")
+st.caption("Find companies in Spain with active hiring needs, HR/recruiting contacts, and ready-to-send outreach templates")
 
 # Initialize Gemini Client using Streamlit Secrets
 try:
@@ -42,9 +42,7 @@ def extract_text_from_pdf(pdf_file):
 # automatically falls back through a list of alternatives if
 # Google retires/renames a model (as happened with 1.5-flash
 # and 2.5-flash previously). This avoids hardcoding a single
-# model name that can 404 without warning. gemini-2.5-flash is
-# kept in the list since that's the model requested, but it's
-# no longer first choice since it has been deprecated before.
+# model name that can 404 without warning.
 # ---------------------------------------------------------
 CANDIDATE_MODELS = [
     "gemini-3.6-flash",
@@ -129,6 +127,14 @@ def render_copy_table_button(df, key):
     """
     components.html(html_code, height=50)
 
+# Language-appropriate placeholder used to tell the model what to
+# put in place of the company name inside the generic templates.
+COMPANY_PLACEHOLDER = {
+    "Spanish": "[Nombre de la Empresa]",
+    "English": "[Company Name]",
+    "French": "[Nom de l'Entreprise]",
+}
+
 MAX_COMPANIES = 50
 
 # Search Mode
@@ -197,26 +203,34 @@ if st.button("Search Matching Companies ✨"):
         st.stop()
 
     num_companies = st.session_state.num_companies_input
+    json_config = types.GenerateContentConfig(response_mime_type="application/json")
 
-    with st.spinner("Searching for companies and generating outreach messages..."):
-        prompt = f"""
-        Act as an expert in B2B Lead Generation and Recruitment in Spain, and as a
-        professional cold-outreach copywriter.
+    # -------------------------------------------------------
+    # Step 1: generate the company contact list (no per-company
+    # message — templates are generated separately below).
+    # -------------------------------------------------------
+    with st.spinner("Searching for companies..."):
+        companies_prompt = f"""
+        Act as an expert in B2B Lead Generation and Recruitment in Spain.
 
-        Generate as many real, distinct companies as possible — up to a maximum of
-        {num_companies} — that are located or active in Spain {f'in the {city_input} area' if city_input else ''}
-        and that have active hiring needs or are a strong match for the profile provided below.
-        Prioritize genuine, well-known or verifiable companies over generic filler entries.
-        Do not repeat the same company twice, and do not stop early if you can find more
-        qualifying companies — aim to reach the requested count.
+        Your task is to generate as close to {num_companies} DISTINCT, real, and
+        highly verifiable companies as you possibly can — {num_companies} is a
+        target you must try hard to reach, not a soft suggestion. Only return
+        fewer than {num_companies} if you have genuinely exhausted every real,
+        verifiable company in Spain matching this profile — do not stop early
+        just because a smaller list feels "safe" or "complete enough". Maximize
+        yield. Never repeat the same company twice.
+
+        Companies must be located or active in Spain {f'in the {city_input} area' if city_input else ''}
+        and have active hiring needs or be a strong match for the profile below.
 
         Candidate profile / requirements:
         {cv_text if cv_text else sector_input}
 
         Target job role / profile the candidate is applying as: {job_role_input}
 
-        Return ONLY a JSON array (no extra text, no markdown fences). Each element
-        must be an object with exactly these fields:
+        Return ONLY a JSON array (no extra text, no markdown fences). Each
+        element must be an object with exactly these fields:
         - "company_name": the company's name
         - "website": the company's website URL (best available guess if unknown)
         - "email": a direct HR/Recruitment contact email. Strongly prioritize
@@ -230,72 +244,110 @@ if st.button("Search Matching Companies ✨"):
           rrhh@[companydomain] or careers@[companydomain]) rather than a
           personal email account.
         - "sector": the company's sector / industry
-        - "motivational_message": a short, personalized, persuasive cold-outreach
-          message (a few sentences, ready to send as an email or LinkedIn message).
-          It must be written in {language_select}, written from the first-person
-          perspective of a candidate applying as a "{job_role_input}", and tailored
-          specifically to that company (mention the company by name and why the
-          candidate would be a strong fit there). Do not use placeholders like
-          "[Your Name]" — write it as a ready-to-send draft.
         """
 
         try:
-            contents = [prompt]
+            contents = [companies_prompt]
             if image_bytes:
                 contents.append(types.Part.from_bytes(data=image_bytes, mime_type=uploaded_file.type))
 
-            config = types.GenerateContentConfig(response_mime_type="application/json")
-            response = call_gemini_auto(client, contents, config=config)
-
-            companies = extract_json_array(response.text)
+            companies_response = call_gemini_auto(client, contents, config=json_config)
+            companies = extract_json_array(companies_response.text)
             if not isinstance(companies, list) or not companies:
                 raise ValueError("The model didn't return a valid list of companies.")
+        except Exception as e:
+            st.error(f"Error generating the company list: {str(e)}")
+            st.stop()
 
-            st.success(f"Search completed successfully! Found {len(companies)} companies.")
+    # -------------------------------------------------------
+    # Step 2: generate 3-5 general-purpose outreach templates,
+    # reusable across any company on the list above.
+    # -------------------------------------------------------
+    with st.spinner("Generating outreach email templates..."):
+        placeholder = COMPANY_PLACEHOLDER.get(language_select, "[Company Name]")
+        templates_prompt = f"""
+        Act as an expert cold-outreach copywriter specialized in job-search
+        and recruitment outreach.
 
-            # Full data (used for CSV export) includes the motivational message.
-            full_df = pd.DataFrame(companies)
-            for col in ["company_name", "website", "email", "sector", "motivational_message"]:
-                if col not in full_df.columns:
-                    full_df[col] = ""
-            full_df = full_df[["company_name", "website", "email", "sector", "motivational_message"]]
+        Write 3 to 5 distinct, highly persuasive, ready-to-send outreach email
+        templates in {language_select}, written in the first person from the
+        perspective of a candidate applying as a "{job_role_input}".
 
-            # Summary table shown on screen omits the long message column.
-            summary_df = full_df[["company_name", "sector", "website", "email"]].rename(columns={
-                "company_name": "Company Name",
-                "sector": "Sector / Industry",
-                "website": "Website",
-                "email": "Contact Email"
-            })
+        These templates must be GENERIC enough to reuse for ANY company on a
+        list of leads — do not reference any specific real company. Instead,
+        use the placeholder "{placeholder}" everywhere the company name would
+        normally go.
 
-            st.markdown("### Summary")
-            st.dataframe(summary_df, use_container_width=True)
+        Vary the tone/angle across the templates (for example: direct and
+        confident, warm and personable, achievement-focused, concise and
+        urgent, curiosity-driven) so the user can pick whichever fits best.
 
-            col1, col2 = st.columns([1, 1])
-            with col1:
-                render_copy_table_button(summary_df, key="leads")
-            with col2:
-                st.download_button(
-                    "⬇️ Download as CSV (includes messages)",
-                    data=full_df.to_csv(index=False).encode("utf-8"),
-                    file_name="spain_leads_with_messages.csv",
-                    mime="text/csv"
+        Return ONLY a JSON array (no extra text, no markdown fences) of 3 to 5
+        objects, each with exactly these fields:
+        - "title": a short label describing the template's tone/angle
+        - "message": the full ready-to-send email text, written in {language_select},
+          using "{placeholder}" as the company-name placeholder. Do not use any
+          other bracketed placeholders like "[Your Name]" — write it as a
+          finished, ready-to-send draft aside from the company-name placeholder.
+        """
+
+        try:
+            templates_response = call_gemini_auto(client, [templates_prompt], config=json_config)
+            templates = extract_json_array(templates_response.text)
+            if not isinstance(templates, list) or not templates:
+                raise ValueError("The model didn't return valid outreach templates.")
+        except Exception as e:
+            st.warning(f"Company list generated, but outreach templates could not be created: {str(e)}")
+            templates = []
+
+    st.success(f"Search completed successfully! Found {len(companies)} companies.")
+
+    # -------------------------------------------------------
+    # Outreach templates section (global, reusable for any company)
+    # -------------------------------------------------------
+    if templates:
+        st.markdown("### 📨 Outreach Email Templates")
+        st.caption(
+            f"Pick any template below, replace \"{placeholder}\" with the target company's name, "
+            "and send it to any company on your list."
+        )
+        tab_labels = [t.get("title", f"Template {i + 1}") for i, t in enumerate(templates)]
+        tabs = st.tabs(tab_labels)
+        for i, (tab, t) in enumerate(zip(tabs, templates)):
+            with tab:
+                st.text_area(
+                    label="",
+                    value=t.get("message", ""),
+                    height=220,
+                    key=f"template_{i}"
                 )
 
-            st.markdown("### Outreach Messages")
-            for idx, row in full_df.iterrows():
-                header = row["company_name"] or f"Company {idx + 1}"
-                with st.expander(f"✉️ {header}"):
-                    st.markdown(f"**Sector:** {row['sector']}")
-                    st.markdown(f"**Website:** {row['website']}")
-                    st.markdown(f"**Email:** {row['email']}")
-                    st.markdown("**Motivational Message / Cold Email:**")
-                    st.text_area(
-                        label="",
-                        value=row["motivational_message"],
-                        height=150,
-                        key=f"msg_{idx}"
-                    )
+    # -------------------------------------------------------
+    # Company list: summary table + copy button + CSV download
+    # -------------------------------------------------------
+    full_df = pd.DataFrame(companies)
+    for col in ["company_name", "website", "email", "sector"]:
+        if col not in full_df.columns:
+            full_df[col] = ""
+    full_df = full_df[["company_name", "website", "email", "sector"]]
 
-        except Exception as e:
-            st.error(f"Error: {str(e)}")
+    summary_df = full_df.rename(columns={
+        "company_name": "Company Name",
+        "sector": "Sector / Industry",
+        "website": "Website",
+        "email": "Contact Email"
+    })[["Company Name", "Sector / Industry", "Website", "Contact Email"]]
+
+    st.markdown("### Summary")
+    st.dataframe(summary_df, use_container_width=True)
+
+    col1, col2 = st.columns([1, 1])
+    with col1:
+        render_copy_table_button(summary_df, key="leads")
+    with col2:
+        st.download_button(
+            "⬇️ Download as CSV",
+            data=full_df.to_csv(index=False).encode("utf-8"),
+            file_name="spain_leads.csv",
+            mime="text/csv"
+        )
