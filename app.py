@@ -568,6 +568,55 @@ with tab_leads:
                 with t_tab:
                     st.text_area(
                         label="",
+
+                        else:
+        # Option 3: LinkedIn Screenshot
+        st.markdown("### 📸 Sube la captura de pantalla de tu perfil de LinkedIn")
+        linkedin_screen = st.file_uploader(
+            "Sube la imagen de tu perfil aquí (PNG, JPG, JPEG)",
+            type=["png", "jpg", "jpeg"],
+            key="linkedin_uploader"
+        )
+        job_target_linkedin = st.text_input("Puesto de Trabajo Objetivo en España (Opcional)", key="cv_job_target_lk")
+
+        if linkedin_screen is not None:
+            image = Image.open(linkedin_screen)
+            st.image(image, caption="LinkedIn Profile Screenshot Preview", use_container_width=True)
+
+            if st.button("Analizar LinkedIn y Generar CV Profesional ✨", key="linkedin_extract_btn"):
+                with st.spinner("Analizando el perfil de LinkedIn y estructurándolo de A a Z para España..."):
+                    try:
+                        linkedin_prompt = f"""
+{STRICT_SPANISH_ATS_PROMPT}
+
+Target Job Title in Spain: {job_target_linkedin if job_target_linkedin else 'Extraer el rol óptimo basado en el perfil de LinkedIn'}
+
+Analyze the provided screenshot of the LinkedIn profile from A to Z. Extract all relevant details (name, headline, experiences, education, skills) and synthesize them completely into the strict Spanish ATS CV format requested above.
+"""
+                        img_byte_arr = linkedin_screen.getvalue()
+                        response = call_gemini_auto(
+                            client,
+                            [
+                                linkedin_prompt,
+                                types.Part.from_bytes(data=img_byte_arr, mime_type=linkedin_screen.type)
+                            ]
+                        )
+
+                        pdf_bytes = generate_pdf_one_page(response.text)
+
+                        st.success("¡CV generado y optimizado desde LinkedIn con éxito!")
+                        st.markdown("---")
+                        st.markdown(response.text)
+
+                        st.download_button(
+                            label="📥 Descargar CV en PDF (Normas España - 1 Página)",
+                            data=pdf_bytes,
+                            file_name="CV_Optimizado_LinkedIn_Espana.pdf",
+                            mime="application/pdf",
+                            key="cv_download_linkedin"
+                        )
+                    except Exception as e:
+                        st.error(f"Ocurrió un error al procesar el pantallazo de LinkedIn: {e}")
                         value=t.get("message", ""),
                         height=220,
                         key=f"template_{i}"
