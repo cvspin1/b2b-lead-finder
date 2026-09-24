@@ -568,3 +568,7 @@ with tab_leads:
                 with t_tab:
                     st.text_area(
                         label="",
+                        value=t.get("message", ""),
+                        height=220,
+                        key=f"template_{i}"
+                    )
