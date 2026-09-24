@@ -258,7 +258,11 @@ with tab_cv:
 
     cv_option = st.radio(
         "Seleccione la opción de entrada / اختار طريقة إدخال البيانات:",
-        ("1. Ingresar datos manualmente (إدخال يدوياً)", "2. Subir documento / foto del CV (PDF, PNG, JPG)"),
+        (
+            "1. Ingresar datos manualmente (إدخال يدوياً)",
+            "2. Subir documento / foto del CV (PDF, PNG, JPG)",
+            "3. Subir captura de LinkedIn (Screenshot)",
+        ),
         key="cv_option"
     )
 
@@ -305,7 +309,7 @@ USER INPUT DATA:
                     except Exception as e:
                         st.error(f"Ocurrió un error: {e}")
 
-    else:
+    elif "2. Subir documento" in cv_option:
         cv_uploaded_file = st.file_uploader(
             "Suba un archivo PDF o una imagen del CV (PDF, PNG, JPG, JPEG)",
             type=["pdf", "png", "jpg", "jpeg"],
@@ -346,6 +350,54 @@ Target Job Title in Spain: {job_target_file if job_target_file else 'Mismo puest
                         )
                     except Exception as e:
                         st.error(f"Ocurrió un error al procesar el archivo: {e}")
+
+    else:
+        # "3. Subir captura de LinkedIn (Screenshot)"
+        linkedin_uploaded_file = st.file_uploader(
+            "Suba una o varias capturas de pantalla del perfil de LinkedIn (PNG, JPG, JPEG)",
+            type=["png", "jpg", "jpeg"],
+            accept_multiple_files=True,
+            key="cv_linkedin_uploader"
+        )
+        job_target_linkedin = st.text_input(
+            "Puesto de Trabajo Objetivo en España (Opcional)",
+            key="cv_job_target_linkedin"
+        )
+
+        if linkedin_uploaded_file:
+            if st.button("Extraer perfil de LinkedIn y Generar CV Optimizado ✨", key="cv_linkedin_extract_btn"):
+                with st.spinner("Analizando la(s) captura(s) de LinkedIn y aplicando el estándar de España..."):
+                    try:
+                        linkedin_prompt = f"""
+{STRICT_SPANISH_ATS_PROMPT}
+
+Target Job Title in Spain: {job_target_linkedin if job_target_linkedin else 'Extraer el rol óptimo basado en el perfil de LinkedIn'}
+
+Analyze the provided screenshot of the LinkedIn profile from A to Z. Extract all relevant details (name, headline, experiences, education, skills) and synthesize them completely into the strict Spanish ATS CV format requested above.
+"""
+                        # Support one or several screenshots (e.g. profile + "show more"
+                        # experience/education sections) in a single request.
+                        contents = [linkedin_prompt]
+                        for f in linkedin_uploaded_file:
+                            image = Image.open(f)
+                            contents.append(image)
+
+                        response = call_gemini_auto(client, contents)
+                        pdf_bytes = generate_pdf_one_page(response.text)
+
+                        st.success("¡CV 100% Optimizado para España generado con éxito!")
+                        st.markdown("---")
+                        st.markdown(response.text)
+
+                        st.download_button(
+                            label="📥 Descargar CV en PDF (Normas España - 1 Página)",
+                            data=pdf_bytes,
+                            file_name="CV_Optimizado_Espana_LinkedIn.pdf",
+                            mime="application/pdf",
+                            key="cv_download_linkedin"
+                        )
+                    except Exception as e:
+                        st.error(f"Ocurrió un error al procesar la(s) captura(s): {e}")
 
 # =========================================================
 # TAB 2: B2B Lead Finder
