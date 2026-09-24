@@ -20,10 +20,10 @@ st.set_page_config(
 )
 
 st.title("CVSpin & B2B Lead Finder España 🇪🇸")
-st.caption("Two tools in one: build an ATS-optimized Spanish CV, or find matching companies and outreach templates in Spain.")
+st.caption("Three tools in one: build an ATS-optimized Spanish CV, find matching companies and outreach templates in Spain, or audit your LinkedIn profile.")
 
 # =========================================================
-# SHARED: API KEY & CLIENT (used by both tools)
+# SHARED: API KEY & CLIENT (used by all tools)
 # =========================================================
 try:
     api_key = st.secrets["GEMINI_API_KEY"]
@@ -49,7 +49,7 @@ def extract_text_from_pdf(pdf_file):
 # Model calling helper: tries a preferred model first, then
 # automatically falls back through a list of alternatives if
 # Google retires/renames a model (as happened with 1.5-flash
-# and 2.5-flash previously). Shared by both tools below.
+# and 2.5-flash previously). Shared by all tools below.
 # config is optional and only used when JSON-mode output is
 # needed (the Lead Finder tool).
 # ---------------------------------------------------------
@@ -246,9 +246,13 @@ COMPANY_PLACEHOLDER = {
 MAX_COMPANIES = 200  # Target the MAX button jumps to. The number input itself has no upper limit.
 
 # =========================================================
-# TABS: one app, two tools
+# TABS: one app, three tools
 # =========================================================
-tab_cv, tab_leads = st.tabs(["📝 CVSpin — Generador de CV", "🔍 B2B Lead Finder"])
+tab_cv, tab_leads, tab_linkedin = st.tabs([
+    "📝 CVSpin — Generador de CV",
+    "🔍 B2B Lead Finder",
+    "🎯 LinkedIn Auditor"
+])
 
 # =========================================================
 # TAB 1: CVSpin — CV Generator
@@ -258,11 +262,7 @@ with tab_cv:
 
     cv_option = st.radio(
         "Seleccione la opción de entrada / اختار طريقة إدخال البيانات:",
-        (
-            "1. Ingresar datos manualmente (إدخال يدوياً)",
-            "2. Subir documento / foto del CV (PDF, PNG, JPG)",
-            "3. Subir captura de LinkedIn (Screenshot)",
-        ),
+        ("1. Ingresar datos manualmente (إدخال يدوياً)", "2. Subir documento / foto del CV (PDF, PNG, JPG)"),
         key="cv_option"
     )
 
@@ -309,7 +309,7 @@ USER INPUT DATA:
                     except Exception as e:
                         st.error(f"Ocurrió un error: {e}")
 
-    elif "2. Subir documento" in cv_option:
+    else:
         cv_uploaded_file = st.file_uploader(
             "Suba un archivo PDF o una imagen del CV (PDF, PNG, JPG, JPEG)",
             type=["pdf", "png", "jpg", "jpeg"],
@@ -350,54 +350,6 @@ Target Job Title in Spain: {job_target_file if job_target_file else 'Mismo puest
                         )
                     except Exception as e:
                         st.error(f"Ocurrió un error al procesar el archivo: {e}")
-
-    else:
-        # "3. Subir captura de LinkedIn (Screenshot)"
-        linkedin_uploaded_file = st.file_uploader(
-            "Suba una o varias capturas de pantalla del perfil de LinkedIn (PNG, JPG, JPEG)",
-            type=["png", "jpg", "jpeg"],
-            accept_multiple_files=True,
-            key="cv_linkedin_uploader"
-        )
-        job_target_linkedin = st.text_input(
-            "Puesto de Trabajo Objetivo en España (Opcional)",
-            key="cv_job_target_linkedin"
-        )
-
-        if linkedin_uploaded_file:
-            if st.button("Extraer perfil de LinkedIn y Generar CV Optimizado ✨", key="cv_linkedin_extract_btn"):
-                with st.spinner("Analizando la(s) captura(s) de LinkedIn y aplicando el estándar de España..."):
-                    try:
-                        linkedin_prompt = f"""
-{STRICT_SPANISH_ATS_PROMPT}
-
-Target Job Title in Spain: {job_target_linkedin if job_target_linkedin else 'Extraer el rol óptimo basado en el perfil de LinkedIn'}
-
-Analyze the provided screenshot of the LinkedIn profile from A to Z. Extract all relevant details (name, headline, experiences, education, skills) and synthesize them completely into the strict Spanish ATS CV format requested above.
-"""
-                        # Support one or several screenshots (e.g. profile + "show more"
-                        # experience/education sections) in a single request.
-                        contents = [linkedin_prompt]
-                        for f in linkedin_uploaded_file:
-                            image = Image.open(f)
-                            contents.append(image)
-
-                        response = call_gemini_auto(client, contents)
-                        pdf_bytes = generate_pdf_one_page(response.text)
-
-                        st.success("¡CV 100% Optimizado para España generado con éxito!")
-                        st.markdown("---")
-                        st.markdown(response.text)
-
-                        st.download_button(
-                            label="📥 Descargar CV en PDF (Normas España - 1 Página)",
-                            data=pdf_bytes,
-                            file_name="CV_Optimizado_Espana_LinkedIn.pdf",
-                            mime="application/pdf",
-                            key="cv_download_linkedin"
-                        )
-                    except Exception as e:
-                        st.error(f"Ocurrió un error al procesar la(s) captura(s): {e}")
 
 # =========================================================
 # TAB 2: B2B Lead Finder
@@ -624,3 +576,71 @@ with tab_leads:
                         height=220,
                         key=f"template_{i}"
                     )
+
+# =========================================================
+# TAB 3: LinkedIn Profile Auditor
+# =========================================================
+with tab_linkedin:
+    st.subheader("🎯 Auditor y Optimizador de Perfil de LinkedIn (De A a Z)")
+    st.markdown("Sube capturas de pantalla de tu perfil actual (Headline, About, Experiencia) para recibir una auditoría completa y los textos exactos optimizados para destacar en España.")
+
+    # Upload de las screenshots (permite subir varias imágenes)
+    linkedin_screenshots = st.file_uploader(
+        "Sube las capturas de tu perfil de LinkedIn (PNG, JPG)",
+        type=["png", "jpg", "jpeg"],
+        accept_multiple_files=True,
+        key="linkedin_auditor_upload"
+    )
+
+    target_role_lk = st.text_input("Puesto o Sector Objetivo (Ej: Software Developer, Digital Marketer)", key="target_role_audit")
+
+    if linkedin_screenshots:
+        st.markdown("### 🖼️ Vistas previas de las capturas:")
+        for img_file in linkedin_screenshots:
+            st.image(Image.open(img_file), use_container_width=True)
+
+        if st.button("Analizar y Darme el Plan Completo de A a Z 🚀", key="run_linkedin_audit"):
+            with st.spinner("Analizando tu perfil de LinkedIn y preparando la estrategia de optimización..."):
+                try:
+                    # Prompt que explica a la IA qué hacer de A a Z
+                    audit_prompt = f"""
+                    Act as an elite Personal Branding Expert and LinkedIn Growth Strategist specialized in the Spanish market.
+                    The user wants to optimize their LinkedIn profile for the target role/sector: '{target_role_lk if target_role_lk else 'General Tech / Professional'}'.
+
+                    Analyze the provided screenshots of their LinkedIn profile from A to Z.
+                    Provide a comprehensive, step-by-step optimization plan covering:
+
+                    1. **Diagnóstico Actual:** What is weak or missing in the current profile?
+                    2. **Titular (Headline) Optimizado:** Give 3 high-converting, keyword-rich headline options in Spanish.
+                    3. **Sección "Acerca de" (About / Summary):** Write a compelling, engaging summary tailored to attract recruiters in Spain.
+                    4. **Experiencia Laboral (Experience):** How to rephrase their past roles using action verbs and quantifiable achievements.
+                    5. **Habilidades y Recomendaciones (Skills & Endorsements):** Which key skills to pin for maximum ATS and recruiter visibility.
+                    6. **Consejos de Imagen de Perfil y Banner:** Recommendations for the profile picture and background banner aesthetics.
+
+                    Format the response clearly with markdown, emojis, and copy-paste ready text blocks.
+                    """
+
+                    # Combinar el prompt con todas las imágenes
+                    contents_payload = [audit_prompt]
+                    for img_file in linkedin_screenshots:
+                        contents_payload.append(
+                            types.Part.from_bytes(data=img_file.getvalue(), mime_type=img_file.type)
+                        )
+
+                    response = call_gemini_auto(client, contents_payload)
+
+                    st.success("¡Auditoría y plan de optimización generados con éxito!")
+                    st.markdown("---")
+                    st.markdown(response.text)
+
+                    # Botón para descargar el plan completo en txt
+                    st.download_button(
+                        label="📥 Descargar Plan de LinkedIn (TXT)",
+                        data=response.text,
+                        file_name="LinkedIn_Optimization_Plan_Espana.txt",
+                        mime="text/plain",
+                        key="download_linkedin_audit"
+                    )
+
+                except Exception as e:
+                    st.error(f"Ocurrió un error procesando las imágenes: {e}")
