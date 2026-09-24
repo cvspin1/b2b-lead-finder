@@ -581,66 +581,83 @@ with tab_leads:
 # TAB 3: LinkedIn Profile Auditor
 # =========================================================
 with tab_linkedin:
-    st.subheader("🎯 Auditor y Optimizador de Perfil de LinkedIn (De A a Z)")
-    st.markdown("Sube capturas de pantalla de tu perfil actual (Headline, About, Experiencia) para recibir una auditoría completa y los textos exactos optimizados para destacar en España.")
+    st.subheader("🎯 LinkedIn Profile Optimizer & Builder (From A to Z)")
+    st.markdown("Upload your current CV and screenshots of your current LinkedIn profile. The AI will analyze both and generate a fully optimized, high-converting LinkedIn profile in **English**.")
 
-    # Upload de las screenshots (permite subir varias imágenes)
-    linkedin_screenshots = st.file_uploader(
-        "Sube las capturas de tu perfil de LinkedIn (PNG, JPG)",
-        type=["png", "jpg", "jpeg"],
-        accept_multiple_files=True,
-        key="linkedin_auditor_upload"
+    # 1. CV input
+    cv_for_linkedin = st.file_uploader(
+        "Upload your CV (PDF or Image) to extract your real data:",
+        type=["pdf", "png", "jpg", "jpeg"],
+        key="cv_for_lk_upload"
     )
 
-    target_role_lk = st.text_input("Puesto o Sector Objetivo (Ej: Software Developer, Digital Marketer)", key="target_role_audit")
+    # 2. LinkedIn screenshots input
+    linkedin_screenshots = st.file_uploader(
+        "Upload screenshots of your current LinkedIn profile (Optional)",
+        type=["png", "jpg", "jpeg"],
+        accept_multiple_files=True,
+        key="linkedin_screens_upload"
+    )
 
-    if linkedin_screenshots:
-        st.markdown("### 🖼️ Vistas previas de las capturas:")
-        for img_file in linkedin_screenshots:
-            st.image(Image.open(img_file), use_container_width=True)
+    target_role_lk = st.text_input("Target Job Role / Position (e.g., Software Developer, Digital Marketer)", key="target_role_audit_en")
 
-        if st.button("Analizar y Darme el Plan Completo de A a Z 🚀", key="run_linkedin_audit"):
-            with st.spinner("Analizando tu perfil de LinkedIn y preparando la estrategia de optimización..."):
-                try:
-                    # Prompt que explica a la IA qué hacer de A a Z
-                    audit_prompt = f"""
-                    Act as an elite Personal Branding Expert and LinkedIn Growth Strategist specialized in the Spanish market.
-                    The user wants to optimize their LinkedIn profile for the target role/sector: '{target_role_lk if target_role_lk else 'General Tech / Professional'}'.
+    if st.button("Generate Optimized LinkedIn Profile 🚀", key="run_linkedin_optimizer_pro"):
+        with st.spinner("Analyzing your CV and LinkedIn screenshots to craft an elite profile in English..."):
+            try:
+                # Extract CV text content if available
+                cv_text_content = ""
+                if cv_for_linkedin is not None:
+                    if cv_for_linkedin.type == "application/pdf":
+                        cv_text_content = extract_text_from_pdf(cv_for_linkedin)
+                    else:
+                        # CV was an image — handled below via image bytes
+                        pass
 
-                    Analyze the provided screenshots of their LinkedIn profile from A to Z.
-                    Provide a comprehensive, step-by-step optimization plan covering:
+                # English-only prompt that handles the whole A-to-Z build
+                optimizer_prompt = f"""
+                You are an elite LinkedIn Ghostwriter and Personal Branding Expert.
+                Your task is to build/rewrite a complete, high-impact LinkedIn profile in **English** from A to Z for the target role: '{target_role_lk if target_role_lk else 'Professional'}'.
 
-                    1. **Diagnóstico Actual:** What is weak or missing in the current profile?
-                    2. **Titular (Headline) Optimizado:** Give 3 high-converting, keyword-rich headline options in Spanish.
-                    3. **Sección "Acerca de" (About / Summary):** Write a compelling, engaging summary tailored to attract recruiters in Spain.
-                    4. **Experiencia Laboral (Experience):** How to rephrase their past roles using action verbs and quantifiable achievements.
-                    5. **Habilidades y Recomendaciones (Skills & Endorsements):** Which key skills to pin for maximum ATS and recruiter visibility.
-                    6. **Consejos de Imagen de Perfil y Banner:** Recommendations for the profile picture and background banner aesthetics.
+                Use the provided CV data and current profile screenshots as the source of truth for their real experience, skills, and background. Make it engaging, professional, ATS-friendly, and optimized to attract recruiters and hiring managers.
 
-                    Format the response clearly with markdown, emojis, and copy-paste ready text blocks.
-                    """
+                Provide the output structured clearly into these exact sections, ready to copy-paste:
 
-                    # Combinar el prompt con todas las imágenes
-                    contents_payload = [audit_prompt]
+                1. **Profile Headline Options (3 high-converting variations):**
+                2. **"About" / Summary Section (Engaging story-driven hook + core expertise + call to action):**
+                3. **Experience Section Rewrites (Optimized job titles, bullet points with action verbs and metrics based on their CV):**
+                4. **Featured Section Strategy & Skills to Pin:**
+                5. **Banner & Profile Picture Guidelines:**
+                """
+
+                # Assemble contents (prompt + CV data + screenshots)
+                contents_payload = [optimizer_prompt]
+
+                if cv_text_content:
+                    contents_payload.append(f"\n--- CANDIDATE CV DATA ---\n{cv_text_content}")
+
+                if cv_for_linkedin and cv_for_linkedin.type != "application/pdf":
+                    contents_payload.append(types.Part.from_bytes(data=cv_for_linkedin.getvalue(), mime_type=cv_for_linkedin.type))
+
+                if linkedin_screenshots:
                     for img_file in linkedin_screenshots:
                         contents_payload.append(
                             types.Part.from_bytes(data=img_file.getvalue(), mime_type=img_file.type)
                         )
 
-                    response = call_gemini_auto(client, contents_payload)
+                response = call_gemini_auto(client, contents_payload)
 
-                    st.success("¡Auditoría y plan de optimización generados con éxito!")
-                    st.markdown("---")
-                    st.markdown(response.text)
+                st.success("¡LinkedIn Profile successfully generated and optimized!")
+                st.markdown("---")
+                st.markdown(response.text)
 
-                    # Botón para descargar el plan completo en txt
-                    st.download_button(
-                        label="📥 Descargar Plan de LinkedIn (TXT)",
-                        data=response.text,
-                        file_name="LinkedIn_Optimization_Plan_Espana.txt",
-                        mime="text/plain",
-                        key="download_linkedin_audit"
-                    )
+                # Button to download the full plan in English as txt
+                st.download_button(
+                    label="📥 Download Optimized LinkedIn Profile (TXT)",
+                    data=response.text,
+                    file_name="Optimized_LinkedIn_Profile_English.txt",
+                    mime="text/plain",
+                    key="download_linkedin_optimizer_txt"
+                )
 
-                except Exception as e:
-                    st.error(f"Ocurrió un error procesando las imágenes: {e}")
+            except Exception as e:
+                st.error(f"An error occurred while processing your data: {e}")
