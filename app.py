@@ -135,7 +135,7 @@ COMPANY_PLACEHOLDER = {
     "French": "[Nom de l'Entreprise]",
 }
 
-MAX_COMPANIES = 50
+MAX_COMPANIES = 200  # Target the MAX button jumps to. The number input itself has no upper limit.
 
 # Search Mode
 search_mode = st.radio(
@@ -179,7 +179,6 @@ with col_num:
     st.number_input(
         "Number of companies",
         min_value=5,
-        max_value=MAX_COMPANIES,
         step=5,
         key="num_companies_input"
     )
@@ -213,13 +212,15 @@ if st.button("Search Matching Companies ✨"):
         companies_prompt = f"""
         Act as an expert in B2B Lead Generation and Recruitment in Spain.
 
-        Your task is to generate as close to {num_companies} DISTINCT, real, and
-        highly verifiable companies as you possibly can — {num_companies} is a
-        target you must try hard to reach, not a soft suggestion. Only return
-        fewer than {num_companies} if you have genuinely exhausted every real,
-        verifiable company in Spain matching this profile — do not stop early
-        just because a smaller list feels "safe" or "complete enough". Maximize
-        yield. Never repeat the same company twice.
+        Generate and return the ABSOLUTE MAXIMUM number of real, distinct,
+        active companies in Spain for the given sector/profile. Maximize the
+        output length and list as many valid entries as possible — treat
+        {num_companies} as the ceiling you are aiming for, not a quota you can
+        stop at early. Keep generating entries until you either reach
+        {num_companies} companies or you run out of genuine, verifiable
+        companies in Spain matching this profile — whichever comes first.
+        Do not artificially shorten the list. Never repeat the same company
+        twice.
 
         Companies must be located or active in Spain {f'in the {city_input} area' if city_input else ''}
         and have active hiring needs or be a strong match for the profile below.
@@ -303,26 +304,6 @@ if st.button("Search Matching Companies ✨"):
     st.success(f"Search completed successfully! Found {len(companies)} companies.")
 
     # -------------------------------------------------------
-    # Outreach templates section (global, reusable for any company)
-    # -------------------------------------------------------
-    if templates:
-        st.markdown("### 📨 Outreach Email Templates")
-        st.caption(
-            f"Pick any template below, replace \"{placeholder}\" with the target company's name, "
-            "and send it to any company on your list."
-        )
-        tab_labels = [t.get("title", f"Template {i + 1}") for i, t in enumerate(templates)]
-        tabs = st.tabs(tab_labels)
-        for i, (tab, t) in enumerate(zip(tabs, templates)):
-            with tab:
-                st.text_area(
-                    label="",
-                    value=t.get("message", ""),
-                    height=220,
-                    key=f"template_{i}"
-                )
-
-    # -------------------------------------------------------
     # Company list: summary table + copy button + CSV download
     # -------------------------------------------------------
     full_df = pd.DataFrame(companies)
@@ -351,3 +332,25 @@ if st.button("Search Matching Companies ✨"):
             file_name="spain_leads.csv",
             mime="text/csv"
         )
+
+    # -------------------------------------------------------
+    # Outreach templates section (global, reusable for any company)
+    # Shown at the bottom, after the company list.
+    # -------------------------------------------------------
+    if templates:
+        st.markdown("---")
+        st.markdown("### 📨 Outreach Email Templates")
+        st.caption(
+            f"Pick any template below, replace \"{placeholder}\" with the target company's name, "
+            "and send it to any company on your list."
+        )
+        tab_labels = [t.get("title", f"Template {i + 1}") for i, t in enumerate(templates)]
+        tabs = st.tabs(tab_labels)
+        for i, (tab, t) in enumerate(zip(tabs, templates)):
+            with tab:
+                st.text_area(
+                    label="",
+                    value=t.get("message", ""),
+                    height=220,
+                    key=f"template_{i}"
+                )
