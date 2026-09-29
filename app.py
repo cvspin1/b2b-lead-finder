@@ -217,8 +217,23 @@ def generate_pdf_one_page(text_content):
     return bytes(final_pdf.output())
 
 STRICT_SPANISH_ATS_PROMPT = """
-YOU ARE AN EXPERT SPANISH RECRUITER AND ATS SPECIALIST.
-YOUR GOAL IS TO PRODUCE A PERFECT 100% ATS-COMPLIANT CV FOR THE SPANISH JOB MARKET (MODELO ESPAÑOL).
+Act as an expert ATS CV optimizer and professional career consultant. Your task
+is strictly to adapt, translate (into professional Spanish if needed, or keep
+professional formatting), and optimize the provided real CV data for the
+Spanish corporate market (Modelo Español), producing a perfect, 100%
+ATS-compliant CV.
+
+CRITICAL CONSTRAINTS (DO NOT BREAK THESE):
+1. ZERO HALLUCINATION: Do NOT invent, change, or fabricate personal details.
+   The candidate's real name, phone number, email, location(s), and personal
+   info MUST remain exactly as they are in the source data.
+2. PRESERVE EXPERIENCE: Do NOT change dates, company names, or job titles
+   from the real work experience. You may only rephrase the bullet points
+   professionally to match Spanish corporate/ATS standards, but the core
+   facts must be 100% faithful to the source.
+3. ADAPTATION ONLY: Optimize the summary and skills sections to align with
+   professional standards in Spain, ensuring no fake degrees, fake
+   companies, or fake identities are created.
 
 CRITICAL FORMATTING RULES:
 - START DIRECTLY WITH THE CV CONTENT. NO INTRODUCTORY TEXT, NO GREETINGS, NO EXPLANATIONS.
@@ -316,6 +331,10 @@ USER INPUT DATA:
             key="cv_uploader"
         )
         job_target_file = st.text_input("Puesto de Trabajo Objetivo en España (Opcional)", key="cv_job_target")
+        base_motivation_cv = st.text_area(
+            "Mensaje de Motivación Base / Pitch (Opcional) — se usa solo para orientar el tono del perfil profesional, nunca para inventar datos",
+            key="cv_base_motivation"
+        )
 
         if cv_uploaded_file is not None:
             if st.button("Extraer datos y Generar CV Optimizado ✨", key="cv_extract_btn"):
@@ -326,10 +345,18 @@ USER INPUT DATA:
 
 Target Job Title in Spain: {job_target_file if job_target_file else 'Mismo puesto detectado o perfil profesional óptimo'}
 """
+                        if base_motivation_cv.strip():
+                            prompt_base += f"""
+
+Base Motivation / Pitch Message (use ONLY to inform the tone and emphasis of
+the PERFIL PROFESIONAL summary — never as a source of facts, and never let it
+override or contradict the real CV data below):
+{base_motivation_cv}
+"""
 
                         if cv_uploaded_file.type == "application/pdf":
                             pdf_text = extract_text_from_pdf(cv_uploaded_file)
-                            full_prompt = f"{prompt_base}\n\nDocument Content:\n{pdf_text}"
+                            full_prompt = f"{prompt_base}\n\nSource CV Text Reference:\n{pdf_text}"
                             response = call_gemini_auto(client, full_prompt)
                         else:
                             image = Image.open(cv_uploaded_file)
