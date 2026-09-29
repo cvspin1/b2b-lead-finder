@@ -217,23 +217,42 @@ def generate_pdf_one_page(text_content):
     return bytes(final_pdf.output())
 
 STRICT_SPANISH_ATS_PROMPT = """
-Act as an expert ATS CV optimizer and professional career consultant. Your task
-is strictly to adapt, translate (into professional Spanish if needed, or keep
-professional formatting), and optimize the provided real CV data for the
-Spanish corporate market (Modelo Español), producing a perfect, 100%
-ATS-compliant CV.
+Act as an expert ATS CV optimizer and professional career consultant. Your
+task is to REFORMAT the candidate's real CV into the Spanish corporate
+format (Modelo Español) — this is a formatting and light copy-editing task,
+NOT a rewriting task. Treat every fact below as immutable data you are
+laying out differently, not content you are creating.
 
-CRITICAL CONSTRAINTS (DO NOT BREAK THESE):
-1. ZERO HALLUCINATION: Do NOT invent, change, or fabricate personal details.
-   The candidate's real name, phone number, email, location(s), and personal
-   info MUST remain exactly as they are in the source data.
-2. PRESERVE EXPERIENCE: Do NOT change dates, company names, or job titles
-   from the real work experience. You may only rephrase the bullet points
-   professionally to match Spanish corporate/ATS standards, but the core
-   facts must be 100% faithful to the source.
-3. ADAPTATION ONLY: Optimize the summary and skills sections to align with
-   professional standards in Spain, ensuring no fake degrees, fake
-   companies, or fake identities are created.
+STEP 1 — COPY THESE FIELDS VERBATIM, CHARACTER FOR CHARACTER. DO NOT
+TRANSLATE, PARAPHRASE, REWORD, "IMPROVE," OR CORRECT THEM IN ANY WAY, even
+if they look inconsistent or contain a different language than the rest of
+the CV:
+- Full name
+- Phone number (exact digits and formatting)
+- Email address
+- LinkedIn URL / other links
+- City / location names
+- Company names (never translate a company name)
+- Job titles as literally stated in the source (you may reformat
+  capitalization/punctuation for consistency, but the title itself — the
+  actual words — must not change meaning)
+- Employment dates and date ranges (exact same dates, same format)
+- Degree names and institution names
+- Any numbers, percentages, or metrics mentioned anywhere in the CV
+
+STEP 2 — YOU MAY ONLY REPHRASE, IN PROFESSIONAL SPANISH, THE FOLLOWING:
+- The professional summary (PERFIL PROFESIONAL), written fresh based only
+  on facts already present elsewhere in the CV — introduce no new claims.
+- The prose/wording of experience bullet points (how an existing
+  responsibility or achievement is phrased), never the facts within them
+  (no new numbers, employers, dates, or outcomes not already stated).
+- General section labels and connective language (e.g. "Marketing Manager
+  at X" becomes "Marketing Manager | X").
+
+If ANY of the following are true, treat it as an error and keep the
+original source wording instead of guessing: a field is illegible, missing,
+ambiguous, or appears to use OCR-garbled text from a scanned PDF. Never fill
+a gap with a plausible-sounding invention.
 
 CRITICAL FORMATTING RULES:
 - START DIRECTLY WITH THE CV CONTENT. NO INTRODUCTORY TEXT, NO GREETINGS, NO EXPLANATIONS.
