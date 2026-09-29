@@ -374,9 +374,24 @@ override or contradict the real CV data below):
 """
 
                         if cv_uploaded_file.type == "application/pdf":
-                            pdf_text = extract_text_from_pdf(cv_uploaded_file)
-                            full_prompt = f"{prompt_base}\n\nSource CV Text Reference:\n{pdf_text}"
-                            response = call_gemini_auto(client, full_prompt)
+                            pdf_bytes = cv_uploaded_file.getvalue()
+                            pdf_text = extract_text_from_pdf(io.BytesIO(pdf_bytes))
+                            if len(pdf_text.strip()) < 40:
+                                # pypdf found little/no text — likely a scanned
+                                # or image-based PDF with no real text layer.
+                                # Send the PDF itself so Gemini reads it
+                                # natively instead of relying on an empty
+                                # extraction (which otherwise makes the model
+                                # correctly refuse, per the anti-hallucination
+                                # rules, since it has no real CV data to use).
+                                full_prompt = f"{prompt_base}\n\nThe source CV is attached below as a PDF file. Read it directly to extract the real data."
+                                response = call_gemini_auto(
+                                    client,
+                                    [full_prompt, types.Part.from_bytes(data=pdf_bytes, mime_type="application/pdf")]
+                                )
+                            else:
+                                full_prompt = f"{prompt_base}\n\nSource CV Text Reference:\n{pdf_text}"
+                                response = call_gemini_auto(client, full_prompt)
                         else:
                             image = Image.open(cv_uploaded_file)
                             response = call_gemini_auto(client, [image, prompt_base])
@@ -414,11 +429,17 @@ with tab_leads:
     sector_input = ""
     leads_uploaded_file = None
 
+    leads_pdf_bytes = None
     if "1. Analyze CV" in search_mode:
         leads_uploaded_file = st.file_uploader("Upload your CV (PDF, PNG, JPG)", type=["pdf", "png", "jpg", "jpeg"], key="leads_uploader")
         if leads_uploaded_file:
             if leads_uploaded_file.type == "application/pdf":
-                leads_cv_text = extract_text_from_pdf(leads_uploaded_file)
+                leads_pdf_bytes = leads_uploaded_file.getvalue()
+                leads_cv_text = extract_text_from_pdf(io.BytesIO(leads_pdf_bytes))
+                if len(leads_cv_text.strip()) < 40:
+                    # Scanned/image-based PDF with no real text layer — fall
+                    # back to sending the PDF itself so Gemini can read it.
+                    leads_cv_text = ""
             else:
                 leads_image_bytes = leads_uploaded_file.read()
     else:
@@ -494,7 +515,7 @@ with tab_leads:
             and have active hiring needs or be a strong match for the profile below.
 
             Candidate profile / requirements:
-            {leads_cv_text if leads_cv_text else sector_input}
+            {leads_cv_text if leads_cv_text else (sector_input if sector_input else "See the attached CV file (PDF or image) for the candidate's profile.")}
 
             Target job role / profile the candidate is applying as: {job_role_input}
 
@@ -519,6 +540,8 @@ with tab_leads:
                 contents = [companies_prompt]
                 if leads_image_bytes:
                     contents.append(types.Part.from_bytes(data=leads_image_bytes, mime_type=leads_uploaded_file.type))
+                elif leads_pdf_bytes and not leads_cv_text:
+                    contents.append(types.Part.from_bytes(data=leads_pdf_bytes, mime_type="application/pdf"))
 
                 companies_response = call_gemini_auto(client, contents, config=json_config)
                 companies = extract_json_array(companies_response.text)
@@ -652,9 +675,15 @@ with tab_linkedin:
             try:
                 # Extract CV text content if available
                 cv_text_content = ""
+                cv_pdf_bytes_for_lk = None
                 if cv_for_linkedin is not None:
                     if cv_for_linkedin.type == "application/pdf":
-                        cv_text_content = extract_text_from_pdf(cv_for_linkedin)
+                        cv_pdf_bytes_for_lk = cv_for_linkedin.getvalue()
+                        cv_text_content = extract_text_from_pdf(io.BytesIO(cv_pdf_bytes_for_lk))
+                        if len(cv_text_content.strip()) < 40:
+                            # Scanned/image-based PDF with no real text layer
+                            # — fall back to attaching the PDF itself below.
+                            cv_text_content = ""
                     else:
                         # CV was an image — handled below via image bytes
                         pass
@@ -680,6 +709,8 @@ with tab_linkedin:
 
                 if cv_text_content:
                     contents_payload.append(f"\n--- CANDIDATE CV DATA ---\n{cv_text_content}")
+                elif cv_pdf_bytes_for_lk:
+                    contents_payload.append(types.Part.from_bytes(data=cv_pdf_bytes_for_lk, mime_type="application/pdf"))
 
                 if cv_for_linkedin and cv_for_linkedin.type != "application/pdf":
                     contents_payload.append(types.Part.from_bytes(data=cv_for_linkedin.getvalue(), mime_type=cv_for_linkedin.type))
